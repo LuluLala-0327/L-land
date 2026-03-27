@@ -1,0 +1,829 @@
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>L-Land</title>
+    <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+    <style>
+        :root {
+            --neon-cyan: #00f3ff;
+            --neon-magenta: #ff0055;
+            --dark-bg: rgba(10, 10, 12, 0.7);
+            --hud-border: rgba(255, 0, 85, 0.2);
+        }
+
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            font-family: 'Pretendard', sans-serif; color: #e0e0e0;
+            overflow: hidden; background-color: #030305; letter-spacing: 0.5px;
+        }
+
+        #video-container {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; overflow: hidden; z-index: 1; background-color: #030305;
+        }
+        #bg-video {
+            position: absolute; top: 0; left: 50%; transform: translateX(-50%); min-width: 100%; height: 400vh; object-fit: cover;
+            transition: top 1.5s cubic-bezier(0.25, 1, 0.5, 1); filter: grayscale(20%) contrast(110%);
+        }
+        .video-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(to bottom, rgba(5,5,8,0.3), rgba(5,5,8,0.8)); pointer-events: none;
+        }
+        .scanlines {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            background-size: 100% 4px, 3px 100%; z-index: 0; pointer-events: none; opacity: 0.6;
+        }
+
+        /* 통합 상단 네비게이션 바 */
+        #top-navbar {
+            position: absolute; top: 0; left: 0; width: 100%; height: 65px;
+            background: rgba(10, 10, 12, 0.85); backdrop-filter: blur(15px);
+            border-bottom: 1px solid rgba(255, 0, 85, 0.2);
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 0 30px; box-sizing: border-box; z-index: 1000;
+            opacity: 0; pointer-events: none;
+            transition: opacity 0.8s ease;
+        }
+        #top-navbar.visible {
+            opacity: 1; pointer-events: auto;
+        }
+        
+        /* 좌측: 메뉴 링크 */
+        .nav-links { display: flex; gap: 30px; align-items: center; height: 100%; }
+        .nav-btn {
+            background: transparent; border: none; color: #bbb;
+            font-size: 0.9em; font-family: inherit; letter-spacing: 2px;
+            cursor: pointer; transition: all 0.3s; text-transform: uppercase;
+            padding: 20px 0; margin: 0; position: relative; height: 100%;
+            display: flex; align-items: center;
+        }
+        .nav-btn svg { width: 22px; height: 22px; transition: all 0.3s ease; }
+        .nav-btn:hover, .nav-btn:hover svg { color: var(--neon-magenta); text-shadow: 0 0 8px rgba(255, 0, 85, 0.6); filter: drop-shadow(0 0 8px rgba(255, 0, 85, 0.6)); }
+        .nav-btn.active, .nav-btn.active svg { color: var(--neon-magenta); font-weight: 600; filter: drop-shadow(0 0 8px rgba(255, 0, 85, 0.6)); }
+        .nav-btn.active::after {
+            content: ''; position: absolute; bottom: 0; left: 0; width: 100%;
+            height: 3px; background: var(--neon-magenta); box-shadow: 0 0 10px var(--neon-magenta);
+        }
+        .nav-btn.guestbook-nav { color: rgba(255,0,85,0.8); }
+        .nav-btn.guestbook-nav:hover, .nav-btn.guestbook-nav.active { color: var(--neon-magenta); text-shadow: 0 0 8px rgba(255,0,85,0.6); }
+        .nav-btn.guestbook-nav.active::after { background: var(--neon-magenta); box-shadow: 0 0 10px var(--neon-magenta); }
+
+        .play-nav-btn { color: #fff; font-weight: bold; text-shadow: 0 0 5px rgba(255, 255, 255, 0.5); }
+
+        /* 우측: 오디오 HUD */
+        .navbar-audio {
+            display: flex; align-items: center; gap: 15px;
+            border-left: 1px solid rgba(255,255,255,0.1); padding-left: 20px;
+        }
+        .hud-marquee-box { width: 150px; overflow: hidden; border-left: 1px solid rgba(255, 0, 85, 0.3); border-right: 1px solid rgba(255, 0, 85, 0.3); padding: 0 10px; }
+        #now-playing-title { font-size: 0.7em; color: var(--neon-magenta); font-weight: bold; white-space: nowrap; line-height: 1.2; letter-spacing: 1px;}
+        .hud-controls { display: flex; gap: 5px; }
+        .hud-btn {
+            background: rgba(0,0,0,0.5); color: var(--neon-magenta); border: 1px solid var(--neon-magenta);
+            padding: 5px 10px; font-size: 0.7em; margin: 0; font-family: inherit; letter-spacing: 1px;
+            cursor: pointer; transition: all 0.3s; border-radius: 2px;
+        }
+        .hud-btn.on { color: var(--neon-magenta); border-color: var(--neon-magenta); text-shadow: 0 0 5px rgba(255, 0, 85, 0.5); box-shadow: inset 0 0 5px rgba(255, 0, 85, 0.2); }
+        .hud-btn:hover { background: rgba(255,255,255,0.1); }
+        .hud-btn.list-btn { border-color: #888; color: #ccc; }
+        .hud-btn.list-btn:hover { border-color: #fff; color: #fff; }
+
+        /* 드롭다운 플레이리스트 패널 */
+        #playlist-panel {
+            position: absolute; top: 75px; right: 30px; width: 320px;
+            background: rgba(10, 10, 12, 0.85); backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.1); border-top: 2px solid var(--neon-magenta);
+            padding: 10px; z-index: 1000; border-radius: 3px; box-shadow: 0 10px 30px rgba(0,0,0,0.7);
+            opacity: 0; transform: translateY(-10px); pointer-events: none; transition: all 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+        }
+        #playlist-panel.open { opacity: 1; transform: translateY(0); pointer-events: auto; }
+        .track-list { list-style: none; padding: 0; margin: 0; text-align: left; }
+        .track-list li { font-size: 0.75em; color: #888; padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.02); cursor: pointer; transition: all 0.2s; }
+        .track-list li:hover { color: #fff; background: rgba(255, 0, 85, 0.05); padding-left: 15px; }
+        .track-list li.playing { color: var(--neon-magenta); font-weight: 600; border-left: 2px solid var(--neon-magenta); padding-left: 15px; background: rgba(255, 0, 85, 0.05); }
+
+        /* 화면 공통 */
+        .screen {
+            display: none; width: 100%; height: 100%;
+            flex-direction: column; justify-content: center; align-items: center; text-align: center;
+            padding: 85px 20px 20px;
+            box-sizing: border-box; z-index: 10; position: relative;
+        }
+        .active { display: flex; animation: glitchFade 1.2s cubic-bezier(0.25, 1, 0.5, 1); }
+
+        #screen-intro { padding: 20px; }
+
+        .glass-panel {
+            position: relative; background: rgba(15, 15, 20, 0.65);
+            backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px);
+            padding: 50px 60px; border: 1px solid rgba(255,255,255,0.05); border-top: 1px solid rgba(255,255,255,0.15);
+            box-shadow: 0 25px 50px rgba(0,0,0,0.5); max-width: 800px; width: 100%; border-radius: 8px;
+        }
+        
+        .scrollable-panel {
+            max-height: 75vh;
+            overflow-y: auto;
+        }
+
+        h1 { font-size: 2.5em; font-weight: 900; text-transform: uppercase; letter-spacing: 4px; margin-bottom: 15px; color: #fff; text-shadow: 0 0 20px rgba(255,255,255,0.3); }
+        h1.accent { color: var(--neon-magenta); text-shadow: 0 0 15px rgba(255, 0, 85, 0.4); }
+        h2 { color: var(--neon-magenta); font-weight: 500; font-size: 1.2em; letter-spacing: 2px; }
+        p { line-height: 1.8; font-weight: 300; color: #bbb; margin: 20px auto; font-size: 1.05em; word-break: keep-all; }
+        h3 { font-size: 4em; font-weight: 900; text-transform: uppercase; letter-spacing: 4px; margin-bottom: 15px; color: rgb(255,0,85); text-shadow: 0 0 20px rgba(255, 0, 85, 0.2); }
+        
+        button {
+            background: rgba(0, 0, 0, 0.4); color: #fff; border: 1px solid rgba(255,255,255,0.2);
+            padding: 14px 35px; font-size: 0.9em; font-family: inherit; letter-spacing: 2px; margin: 10px;
+            cursor: pointer; transition: all 0.3s ease; text-transform: uppercase; position: relative; overflow: hidden; border-radius: 4px;
+        }
+        button:hover { border-color: var(--neon-magenta); color: var(--neon-magenta); background: rgba(255, 0, 85, 0.1); box-shadow: inset 0 0 15px rgba(255, 0, 85, 0.1), 0 0 15px rgba(255, 0, 85, 0.2); }
+        .play-btn { border-color: rgba(255, 0, 85, 0.5); color: var(--neon-magenta); margin-top: 20px; }
+        .play-btn:hover { border-color: var(--neon-magenta); background: rgba(255, 0, 85, 0.1); color: var(--neon-magenta); box-shadow: inset 0 0 15px rgba(255, 0, 85, 0.1), 0 0 20px rgba(255, 0, 85, 0.3); }
+
+        /* 🔥 홈 화면 카드 섹션 스타일 🔥 */
+        .home-card {
+            background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255,255,255,0.05);
+            border-radius: 6px; padding: 25px; margin-top: 30px;
+            text-align: left; transition: transform 0.3s, border-color 0.3s;
+        }
+        .home-card:hover {
+            transform: translateY(-3px);
+            border-color: rgba(255, 0, 85, 0.2);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        .home-card .detail-image-wrapper { margin: 0 0 20px 0; height: 250px; }
+        .home-card h2 { margin-top: 0; border-bottom: none; padding-bottom: 0; }
+        .home-card p { font-size: 0.95em; color: #aaa; margin-bottom: 15px; }
+        .home-card .play-btn { margin: 10px 0 0 0; padding: 10px 20px; font-size: 0.8em; }
+
+        /* 개별 이미지 패널 스타일 */
+        .detail-image-wrapper2 {
+            width: 100%; height: 500px; margin: 35px 0 15px 0; border-radius: 4px;
+            overflow: hidden; border: 1px solid rgba(255, 0, 85, 0.3); position: relative;
+        }
+        .detail-image-wrapper {
+            width: 100%; height: 300px; margin: 35px 0 15px 0; border-radius: 4px;
+            overflow: hidden; border: 1px solid rgba(255, 0, 85, 0.3); position: relative;
+        }
+        .detail-image-wrapper:first-child, .detail-image-wrapper2:first-child { margin-top: 0; }
+        .detail-image-wrapper::after, .detail-image-wrapper2::after {
+            content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background: linear-gradient(to bottom, transparent 50%, rgba(15, 15, 20, 0.95) 100%); pointer-events: none;
+        }
+        .detail-image {
+            width: 100%; height: 100%; object-fit: cover;
+            filter: contrast(120%) grayscale(30%); transition: opacity 0.5s ease;
+        }
+        
+        .grayscale-img {
+            filter: grayscale(100%) contrast(120%) !important;
+        }
+
+        /* 상세 내용 텍스트 스타일 */
+        #detail-content { text-align: left; }
+        #detail-content h2 { margin-top: 10px; border-bottom: 1px solid rgba(255, 0, 85, 0.3); padding-bottom: 10px; color: #fff; text-shadow: 0 0 10px rgba(255, 0, 85, 0.5); }
+        #detail-content h3 { color: var(--neon-magenta); font-size: 1.1em; margin-bottom: 5px; margin-top: 10px; letter-spacing: 1px;}
+        #detail-content strong { color: var(--neon-magenta); font-weight: 500; }
+        #detail-content p { border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 15px; margin-top: 5px; color: #bbb;}
+        #detail-content ul { color: #bbb; line-height: 1.8; margin-bottom: 25px; padding-left: 20px;}
+        #detail-content li { margin-bottom: 8px; }
+
+        /* 방명록 폼 스타일 */
+        .guestbook-form-container {
+            background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255,255,255,0.1);
+            padding: 25px; margin-bottom: 40px; border-radius: 4px; text-align: left;
+        }
+        .gb-input-group { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        .gb-input-group input, .gb-input-group textarea {
+            flex: 1; min-width: 200px; background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.2);
+            color: #fff; padding: 15px; font-family: inherit; font-size: 1em; box-sizing: border-box;
+            border-radius: 2px; transition: all 0.3s;
+        }
+        .gb-input-group input:focus, .gb-input-group textarea:focus { outline: none; border-color: var(--neon-cyan); box-shadow: 0 0 10px rgba(0, 243, 255, 0.2); }
+        .gb-faction-group {
+            display: flex; align-items: center; gap: 20px; margin-bottom: 20px;
+            background: rgba(0,0,0,0.3); padding: 10px 15px; border: 1px dashed rgba(255,255,255,0.2); flex-wrap: wrap;
+        }
+        .gb-radio { cursor: pointer; font-size: 1em; transition: all 0.3s; color: #aaa; }
+        .half-radio { color: var(--neon-magenta); }
+        .human-radio { color: var(--neon-cyan); }
+        .zombie-radio { color: #888; }
+
+        /* 방명록 리스트 스타일 */
+        .guestbook-entries { display: flex; flex-direction: column; gap: 20px; text-align: left; }
+        .gb-entry {
+            background: rgba(5,5,8,0.8); border-left: 3px solid #444; padding: 20px;
+            animation: fadeIn 0.4s ease-out; border-radius: 0 4px 4px 0;
+        }
+        .gb-entry.half { border-color: var(--neon-magenta); box-shadow: -3px 0 15px rgba(255, 0, 85, 0.1); }
+        .gb-entry.human { border-color: var(--neon-cyan); box-shadow: -3px 0 15px rgba(0, 243, 255, 0.1); }
+        .gb-entry.zombie { border-color: #555; }
+
+        .gb-entry-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 12px; font-size: 0.85em; opacity: 0.8;
+            border-bottom: 1px dashed rgba(255,255,255,0.1); padding-bottom: 8px; color: #ccc;
+        }
+        .gb-entry-header strong { font-size: 1.1em; }
+        .gb-entry.half .gb-entry-header strong { color: var(--neon-magenta); }
+        .gb-entry.human .gb-entry-header strong { color: var(--neon-cyan); }
+        .gb-entry-msg { font-size: 1.05em; line-height: 1.6; color: #ddd; word-break: break-all; }
+
+        .gb-delete-btn {
+            background: transparent; border: 1px solid #555; color: #888; cursor: pointer; font-size: 0.8em; padding: 3px 8px; border-radius: 2px;
+            margin-left: 10px; transition: all 0.3s; font-family: inherit; margin-top: 0;
+        }
+        .gb-delete-btn:hover { color: var(--neon-magenta); border-color: var(--neon-magenta); }
+
+        @keyframes glitchFade { 0% { opacity: 0; transform: translateY(15px); filter: blur(5px); } 100% { opacity: 1; transform: translateY(0); filter: blur(0); } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
+        ::-webkit-scrollbar-thumb { background: var(--neon-magenta); border-radius: 3px; }
+
+        /* 모바일 화면 전용 (상단바 하단으로 이동) */
+        @media (max-width: 768px) {
+            #top-navbar {
+                top: auto;
+                bottom: 0;
+                flex-direction: column-reverse;
+                height: auto;
+                padding: 10px 15px;
+                border-top: 1px solid rgba(255, 0, 85, 0.4);
+                border-bottom: none;
+                box-shadow: 0 -10px 30px rgba(0,0,0,0.8);
+            }
+            .nav-links {
+                width: 100%;
+                justify-content: space-around;
+                gap: 5px;
+            }
+            .nav-btn {
+                padding: 10px 5px;
+                font-size: 0.75em;
+            }
+            .nav-btn.active::after {
+                bottom: auto;
+                top: 0;
+            }
+            .navbar-audio {
+                border-left: none;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+                padding-left: 0;
+                padding-bottom: 10px;
+                margin-bottom: 5px;
+                width: 100%;
+                justify-content: center;
+            }
+            
+            #playlist-panel {
+                top: auto;
+                bottom: 100px;
+                left: 50%;
+                right: auto;
+                transform: translateX(-50%) translateY(20px);
+                width: 90%;
+                max-width: 320px;
+                border-top: none;
+                border-bottom: 2px solid var(--neon-magenta);
+            }
+            #playlist-panel.open {
+                transform: translateX(-50%) translateY(0);
+            }
+
+            .screen {
+                padding: 20px 20px 130px 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="video-container">
+        <video id="bg-video" autoplay loop muted playsinline>
+            <source src="https://i.ifh.cc/P9BaVj.mp4" type="video/mp4">
+        </video>
+        <div class="video-overlay"></div>
+    </div>
+    <div class="scanlines"></div>
+
+    <audio id="bgm-audio"></audio>
+
+    <nav id="top-navbar">
+        <div class="nav-links">
+            <button class="nav-btn active" id="nav-home" onclick="navTo('home')" title="HOME">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                    <polyline points="9 22 9 12 15 12 15 22"></polyline>
+                </svg>
+            </button>
+            <button class="nav-btn" id="nav-location" onclick="navTo('location')">MAP</button>
+            <button class="nav-btn" id="nav-species" onclick="navTo('species')">Species</button>
+            <button class="nav-btn guestbook-nav" id="nav-guestbook" onclick="navTo('guestbook')">통신 로그</button>
+            <button class="nav-btn play-nav-btn" id="nav-play" onclick="navTo('play')">PLAY</button>
+        </div>
+        
+        <div class="navbar-audio">
+            <div class="hud-marquee-box">
+                <marquee scrollamount="3" id="now-playing-title">SYSTEM OFFLINE</marquee>
+            </div>
+            <div class="hud-controls">
+                <button class="hud-btn" id="audio-toggle-btn" onclick="toggleAudio()">⏸</button>
+                <button class="hud-btn" onclick="nextTrack()">▶▶</button>
+                <button class="hud-btn list-btn" onclick="togglePlaylist()">☰</button>
+            </div>
+        </div>
+    </nav>
+
+    <div id="playlist-panel">
+        <ul class="track-list" id="track-list-container"></ul>
+    </div>
+
+    <div id="screen-intro" class="screen active">
+        <div class="glass-panel">
+            <h3 class="accent">L-Land</h3>
+            <p>세상의 주인은 더 이상 인간이 아닙니다.<br>계속해 생존하시겠습니까?</p>
+            <button class="play-btn" onclick="goToHome()">[ 생존하기 ]</button>
+        </div>
+    </div>
+
+    <div id="screen-home" class="screen">
+        <div class="glass-panel scrollable-panel" style="max-width: 900px; width:100%;">
+            <h1>WORLD OF<br>L-CITY</h1>
+            <p style="text-align:center;">2067년 좀비 사태 발발 10년 후.<br>서울 잠실은 '리커버리'로 이성을 유지하는 신종족 하프가 지배하는 폭력적 계급 도시가 되었다.<br>인간은 애완동물·가축·노동력·사냥감으로 전락했다.</p>
+            
+            <hr style="border: 0; border-top: 1px dashed rgba(255, 0, 85, 0.2); margin: 40px 0 10px;">
+
+            <div class="home-card">
+                <div class="detail-image-wrapper">
+                    <img class="detail-image grayscale-img" src="https://i.ibb.co/xSSz40Kq/masterpiece-best-quality-top-aesthetic-high-resolution-illustration-1-1-s-2340435383-proces.png" alt="Recovery System">
+                </div>
+                <h2>🌏 인간의 몰락, 2056</h2>
+                <p>세계 대전의 발발과 동시에 시작된 질병은 걷잡을 수 없이 빠르게 세상을 점령해갔습니다. 전날 인사를 나누던 이웃은 이를 들어내고, 사랑을 속삭이던 연인은 서로의 살점을 맛보며 이성을 잃어가는 좀비가 되었습니다. 무력진압을 시도할세도 없이 인간은 모든 인프라를 잃고 야생에서 생존해야했습니다.</p>
+
+                <div class="detail-image-wrapper">
+                    <img class="detail-image grayscale-img" src="https://i.ibb.co/JjhQydzh/download-4.gif" alt="Recovery System">
+                </div>
+                <h2>💉 진화의 시작, 리커버리</h2>
+                <p>도시를 지배하는 절대적인 화폐이자 생명줄. 좀비화를 해결하기 위한 치료제였지만 이를 실효성을 검증하기에는 시간은 인간의 편이 아니었습니다. 급히 보급되었으나 이는 감염자들의 좀비화를 늦추고 이성을 붙잡아주는 유일한 구원제이나, 사용한 사람의 10%만이 생존하였으며 지속해 투여받지 않으면 좀비가 되어버리는 영원히 끊어낼 수 없는 저주의 굴레입니다.</p>
+            </div>
+
+            <div class="home-card">
+                <div class="detail-image-wrapper">
+                    <img class="detail-image grayscale-img" src="https://i.ibb.co/6cSNhmF4/masterpiece-best-quality-top-aesthetic-high-resolution-illustration-1-1-s-3488184711-proces.png" alt="Species">
+                </div>
+                <h2>🧬 뒤틀린 먹이사슬</h2>
+                <p>영생을 얻은 지배층 '하프', 가축으로 전락한 '인간', 그리고 이성을 잃고 배회하는 '좀비'. 잔혹하게 재편된 도시의 생태계 속에서 당신의 위치를 확인하십시오.</p>
+                <button class="play-btn" onclick="navTo('species')">자세히 알아보기 (Species)</button>
+            </div>
+
+            <div class="home-card">
+                <div class="detail-image-wrapper">
+                    <img class="detail-image grayscale-img" src="https://i.ibb.co/Z1w8SdX8/1ffbc475-5b30-4562-99c7-40c8e1509dfc.jpg" alt="MAP">
+                </div>
+                <h2>📍 L 시티</h2>
+                <p>화려한 네온사인과 피비린내가 공존하는 L-CITY. 하프들의 유희 공간부터 야생 인간들의 은신처까지, 생존을 위해 반드시 각 구역의 위험도를 숙지해야 합니다.</p>
+                <button class="play-btn" onclick="navTo('location')">자세히 알아보기 (MAP)</button>
+            </div>
+
+            <div style="margin-top: 60px; text-align: left;">
+                <h2 style="color:var(--neon-cyan); border-bottom: 1px dashed rgba(0,243,255,0.3); padding-bottom:10px; margin-bottom: 20px;">📡 최근 생존자 통신 로그</h2>
+                
+                <div id="home-guestbook-entries" class="guestbook-entries"></div>
+                
+                <button class="play-btn" style="width:100%; margin-top:20px; font-size: 1em;" onclick="navTo('guestbook')">[ 통신 로그 남기기 ]</button>
+            </div>
+
+        </div>
+    </div>
+
+    <div id="screen-detail" class="screen">
+        <div class="glass-panel scrollable-panel" style="max-width: 900px; width:100%;">
+            <div id="detail-content"></div>
+        </div>
+    </div>
+
+    <div id="screen-play" class="screen">
+        <div class="glass-panel scrollable-panel" style="max-width: 900px; width:100%;">
+            <h2 style="color:var(--neon-magenta); border-bottom: 1px solid rgba(255, 0, 85, 0.3); padding-bottom:10px; text-align:left; margin-top:0;">🎮 PLAY ZONE</h2>
+            <p style="text-align:left; font-size:0.95em; color:#bbb; margin-top:5px;">현재 콘텐츠를 준비 중입니다.</p>
+            <button class="play-btn" style="margin-top: 20px; display: inline-block;" onclick="window.open('https://www.nekochat.xyz/creator/LuluLala', '_blank')">[ 제작자의 다른 컨텐츠 구경가기 ]</button>
+        </div>
+    </div>
+
+    <div id="screen-guestbook" class="screen">
+        <div class="glass-panel scrollable-panel" style="max-width: 900px; width:100%;">
+            <h2 style="color:var(--neon-cyan); border-bottom: 1px solid rgba(0,243,255,0.3); padding-bottom:10px; text-align:left; margin-top:0;">📡 생존자 통신 채널</h2>
+            <p style="text-align:left; font-size:0.95em; color:#bbb; margin-top:5px;">L-Land 네트워크에 접속한 당신의 흔적을 남기십시오.</p>
+
+            <div class="guestbook-form-container">
+                <div class="gb-input-group">
+                    <input type="text" id="gb-name" placeholder="식별자 (ID / Name)" required autocomplete="off">
+                    <input type="password" id="gb-password" placeholder="삭제용 비밀번호 (PIN)" required autocomplete="off">
+                </div>
+                <div class="gb-faction-group">
+                    <span style="color:#aaa; margin-right:15px;">종족 선택:</span>
+                    <label class="gb-radio half-radio"><input type="radio" name="gb-faction" value="half" checked> 하프</label>
+                    <label class="gb-radio human-radio"><input type="radio" name="gb-faction" value="human"> 인간</label>
+                    <label class="gb-radio zombie-radio"><input type="radio" name="gb-faction" value="zombie"> 좀비</label>
+                </div>
+                <div class="gb-input-group" style="margin-bottom:0;">
+                    <textarea id="gb-message" rows="3" placeholder="메시지를 입력하십시오..." required></textarea>
+                </div>
+                <button class="play-btn" style="margin-top:15px; width:100%;" onclick="submitGuestbook()">송신 (TRANSMIT)</button>
+            </div>
+
+            <div id="guestbook-entries" class="guestbook-entries"></div>
+        </div>
+    </div>
+
+    <script>
+        let currentScreen = 'screen-intro'; 
+
+        function switchScreen(showId) {
+            document.getElementById(currentScreen).classList.remove('active');
+            setTimeout(() => {
+                document.getElementById(showId).classList.add('active');
+                if(showId === 'screen-detail' || showId === 'screen-guestbook' || showId === 'screen-home' || showId === 'screen-play') {
+                    document.querySelector(`#${showId} .scrollable-panel`).scrollTop = 0;
+                }
+                currentScreen = showId;
+            }, 50);
+        }
+
+        function setBackgroundPosition(step) {
+            let vhMove = step * -100;
+            document.getElementById('bg-video').style.top = `${vhMove}vh`;
+        }
+
+        const audioTracks = [
+            { title: "Echo Lake", src: "./music/track1.mp3" },
+            { title: "L-Land", src: "./music/track2.mp3" },
+            { title: " Auction House", src: "./music/track3.mp3" },
+            { title: " Star Market", src: "./music/track4.mp3" },
+            { title: " Proxy Gourmet", src: "./music/track5.mp3" },
+            { title: "The Halfs", src: "./music/track6.mp3" },
+            { title: "immortality", src: "./music/track7.mp3" },
+            { title: "solar city", src: "./music/track8.mp3" },
+            { title: "Human Type A", src: "./music/track9.mp3" },
+            { title: "Wild Humans", src: "./music/track10.mp3" },
+            { title: "Hope apartment", src: "./music/track11.mp3" },
+            { title: "Resistance Zone", src: "./music/track12.mp3" },
+            { title: "Senseless Catastrophe", src: "./music/track13.mp3" },
+            { title: "Concrete Jungle", src: "./music/track14.mp3" },
+            { title: "L tower", src: "./music/track15.mp3" },
+            { title: "No Man's Land", src: "./music/track16.mp3" }
+        ];
+        let currentTrackIdx = 0;
+
+        function renderPlaylist() {
+            const listContainer = document.getElementById('track-list-container');
+            listContainer.innerHTML = ''; 
+            audioTracks.forEach((track, index) => {
+                const li = document.createElement('li');
+                li.innerText = track.title;
+                if (index === currentTrackIdx) li.classList.add('playing');
+                li.onclick = () => playTrack(index);
+                listContainer.appendChild(li);
+            });
+        }
+
+        function initAudio() {
+            const bgm = document.getElementById('bgm-audio');
+            bgm.src = audioTracks[currentTrackIdx].src;
+            document.getElementById('now-playing-title').innerText = audioTracks[currentTrackIdx].title;
+            renderPlaylist(); 
+            bgm.onended = nextTrack; 
+        }
+
+        function toggleAudio() {
+            const bgm = document.getElementById('bgm-audio');
+            const toggleBtn = document.getElementById('audio-toggle-btn');
+            if (!bgm.src) return;
+
+            if (bgm.paused) {
+                bgm.play();
+                toggleBtn.innerText = "▶";
+                toggleBtn.classList.add('▶');
+            } else {
+                bgm.pause();
+                toggleBtn.innerText = "⏸";
+                toggleBtn.classList.remove('▶');
+            }
+        }
+
+        function nextTrack() {
+            currentTrackIdx = (currentTrackIdx + 1) % audioTracks.length;
+            initAudio();
+            const bgm = document.getElementById('bgm-audio');
+            const toggleBtn = document.getElementById('audio-toggle-btn');
+            if (toggleBtn.classList.contains('▶')) bgm.play().catch(e => console.log(e));
+        }
+
+        function playTrack(index) {
+            currentTrackIdx = index;
+            initAudio();
+            const bgm = document.getElementById('bgm-audio');
+            const toggleBtn = document.getElementById('audio-toggle-btn');
+            bgm.play().then(() => {
+                toggleBtn.innerText = "▶";
+                toggleBtn.classList.add('▶');
+            }).catch(e => console.log(e));
+        }
+
+        function togglePlaylist() {
+            const playlistPanel = document.getElementById('playlist-panel');
+            playlistPanel.classList.toggle('open');
+        }
+
+        function updateNavState(activeId) {
+            document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(activeId).classList.add('active');
+        }
+
+        function navTo(target) {
+            if (target === 'home') {
+                setBackgroundPosition(1); 
+                switchScreen('screen-home');
+                updateNavState('nav-home');
+            } else if (target === 'location') {
+                document.getElementById('detail-content').innerHTML = details.location;
+                setBackgroundPosition(2); 
+                switchScreen('screen-detail');
+                updateNavState('nav-location');
+            } else if (target === 'species') {
+                document.getElementById('detail-content').innerHTML = details.species;
+                setBackgroundPosition(2); 
+                switchScreen('screen-detail');
+                updateNavState('nav-species');
+            } else if (target === 'guestbook') {
+                setBackgroundPosition(2); 
+                switchScreen('screen-guestbook');
+                updateNavState('nav-guestbook');
+            } else if (target === 'play') {
+                setBackgroundPosition(2); 
+                switchScreen('screen-play');
+                updateNavState('nav-play');
+            }
+            
+            document.getElementById('playlist-panel').classList.remove('open');
+        }
+
+        function goToHome() {
+            document.getElementById('top-navbar').classList.add('visible');
+
+            initAudio(); 
+            const bgm = document.getElementById('bgm-audio');
+            const toggleBtn = document.getElementById('audio-toggle-btn');
+            bgm.volume = 0.5;
+            bgm.play().then(() => {
+                toggleBtn.innerText = "▶";
+                toggleBtn.classList.add('▶');
+            }).catch(error => console.log("자동 재생이 차단되었습니다.", error));
+            
+            navTo('home');
+        }
+
+        const details = {
+            location: `
+                <div class="detail-image-wrapper2">
+                    <img class="detail-image" src="https://i.ibb.co/3XkQxdR/Gemini-Generated-Image.png" alt="Location View">
+                </div>
+                <h2>📍 중앙 구역 : 하프들의 유희 공간</h2>
+                <h3>에코 호수 (Dead Lake)</h3>
+                <ul>
+                    <li><strong>상태:</strong> 리커버리 부작용으로 죽은 좀비나 실패작들의 시체가 수장되는 거대한 폐기물 처리장.</li>
+                    <li><strong>특징:</strong> 바닥에 거대한 수생 변이체가 산다는 소문이 돌고, '캣맘' 성향 하프들이 야생 인간에게 먹이를 던져주며 구경하는 장소이기도 합니다.</li>
+                </ul>
+                <h3>L랜드 (The Garden)</h3>
+                <ul>
+                    <li><strong>상태:</strong> 상류층 하프들의 VIP 전용 펫 파크.</li>
+                    <li><strong>특징:</strong> 애완 인간을 산책시키거나 사냥(술래잡기)을 즐깁니다. 과거 놀이기구는 고문 및 처형대로 개조됐고, 밤에는 광란의 파티가 열립니다.</li>
+                </ul>
+
+                <h2>📍 동북부 상업 지구 : 권력과 유통의 중심</h2>
+                <h3>L타워 (The Spire)</h3>
+                <ul>
+                    <li><strong>상태:</strong> 최상위 포식자 하프들이 거주하는 절대 권력의 정점.</li>
+                    <li><strong>특징:</strong> 스카이라운지에선 인간 고기 요리와 최상급 리커버리를 즐기고, 지하엔 삼엄한 경비 속에 리커버리 제조 및 보관소가 있습니다.</li>
+                </ul>
+                <h3>네오플라자 & 스타마켓</h3>
+                <ul>
+                    <li><strong>상태:</strong> 인간 경매장과 식료품 창고.</li>
+                    <li><strong>특징:</strong> 네오플라자에선 인간을 1등급(애완), 2등급(노예), 3등급(식용)으로 등급을 매겨 거래합니다. 스타마켓에선 인간 정육과 애완 인간용 고급 사료를 판매합니다.</li>
+                </ul>
+
+                <h2>📍 남부 거주 지구 : 사육과 야생</h2>
+                <h3>솔라시티 (The Cage)</h3>
+                <ul>
+                    <li><strong>상태:</strong> 깨끗하고 안락하지만 외출이 철저히 금지된 관리형 인간 사육장.</li>
+                    <li><strong>특징:</strong> 이곳 인간들은 체제에 순응하며 하프를 신처럼 모시고 밖의 야생 인간을 미개하다고 혐오합니다.</li>
+                </ul>
+                <h3>희망 아파트 (The Slums)</h3>
+                <ul>
+                    <li><strong>상태:</strong> 인프라를 차지하지 못한 하층민 하프들의 거주지.</li>
+                    <li><strong>특징:</strong> 리커버리를 구하지 못해 금단증상에 시달리는 폭력적인 하프들이 득실거립니다.</li>
+                </ul>
+                <h3>주택가 (Resistance Zone)</h3>
+                <ul>
+                    <li><strong>상태:</strong> 야생 인간(스트레이)들이 함정을 깔고 숨어 사는 우범 지대.</li>
+                    <li><strong>특징:</strong> 갱단, 인간 사냥꾼, 하프 거래상, 좀비가 뒤엉킨 아슬아슬한 생존 구역입니다.</li>
+                </ul>
+
+                <h2>📍 외곽 금지 구역</h2>
+                <h3>빌딩 숲 (Zombie Hive) & 한강</h3>
+                <ul>
+                    <li><strong>특징:</strong> 빌딩 숲은 오염 농도가 높아 하프도 오래 버티지 못하는 좀비 군락지입니다. 어딘가에 마약 성분이 없는 '진짜 초기 리커버리 원액'이 있다는 소문 때문에 목숨 건 탐사가 벌어집니다. 한강의 다리는 모두 끊겨 있어 미지의 영역으로 남아있습니다.</li>
+                </ul>
+            `,
+            species: `
+                <h2>🧬 종족 (Species)</h2>
+                
+                <div class="detail-image-wrapper">
+                    <img class="detail-image" src="https://i.ibb.co/6cSNhmF4/masterpiece-best-quality-top-aesthetic-high-resolution-illustration-1-1-s-3488184711-proces.png" alt="Half">
+                </div>
+                <h3>하프 (Half) - [지배층]</h3>
+                <ul>
+                    <li><strong>특성:</strong> 리커버리를 통해 이성을 유지하는 불사의 존재들. 미각을 잃어 오직 유희를 위해서만 식사하며 인간을 최고의 진미로 여깁니다.</li>
+                    <li><strong>분류:</strong> 인간에게 우호적인 척하며 귀여워하는 <strong>'애호파'</strong>, 철저히 가축이나 도구로 취급하는 주류 세력 <strong>'지배파'</strong>, 신체 능력이 떨어지고 금단증상에 시달리는 <strong>'하층민'</strong>으로 나뉩니다.</li>
+                </ul>
+
+                <div class="detail-image-wrapper">
+                    <img class="detail-image" src="https://i.ibb.co/kVx729J3/27.png" alt="Human">
+                </div>
+                <h3>인간 (Human) - [피지배층 / 생존자]</h3>
+                <ul>
+                    <li><strong>특성:</strong> 과거의 지배자에서 철저한 사냥감, 도구, 애완동물로 전락했습니다.</li>
+                    <li><strong>분류:</strong> 하프의 통제 아래 안락하게 사육당하는 <strong>'사육 인간'</strong>과, 목숨을 걸고 거칠게 자유를 누리는 <strong>'야생 인간(스트레이)'</strong>으로 나뉩니다. 미각 없는 하프 앞에서 먹방을 하는 '대리 미식가', 오염 구역을 뒤지는 '헌터' 등 기형적인 직업들이 생겨났습니다.</li>
+                </ul>
+
+                <div class="detail-image-wrapper">
+                    <img class="detail-image" src="https://i.ibb.co/xSSz40Kq/masterpiece-best-quality-top-aesthetic-high-resolution-illustration-1-1-s-2340435383-proces.png" alt="Zombie">
+                </div>
+                <h3>좀비 (Zombie) - [재해 / 맹수]</h3>
+                <ul>
+                    <li><strong>특성:</strong> 이성은 없지만 신체 능력과 청각이 월등한 도시의 맹수. 생존 목적이 아니라 비틀린 미각과 번식 욕구 때문에 무차별적으로 사람을 사냥합니다.</li>
+                </ul>
+
+                <div class="detail-image-wrapper">
+                    <img class="detail-image" src="https://i.ibb.co/JjhQydzh/download-4.gif" alt="Recovery System">
+                </div>
+                <h2>💉 리커버리 & 감염 시스템</h2>
+                <ul>
+                    <li><strong>리커버리 (Recovery):</strong> 좀비화를 늦추고 이성을 붙잡아두는 연명 마약이자 도시의 핵심 권력 화폐입니다. 극도의 쾌감을 주며 공급망 통제가 곧 하프의 권력입니다.</li>
+                    <li><strong>감염:</strong> 인간이 좀비에게 물리면 <strong>100% 좀비</strong>가 됩니다. 하지만 물린 직후 리커버리를 투여하면 <strong>10% 확률로 하프 각성</strong> / 90% 확률로 좀비화됩니다.</li>
+                    <li><strong>재활 시도:</strong> 이미 좀비가 된 자에게 리커버리를 강제 투여할 경우, <strong>10% 확률로 이성을 되찾아 하프</strong>가 되지만 <strong>90% 확률로 뇌 과부하가 와서 즉사</strong>합니다.</li>
+                </ul>
+            `
+        };
+    </script>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js";
+        import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-analytics.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, doc, getDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyAt4Fx_jHcFlui5gBBn-gug6VJ7e2QP_pk",
+            authDomain: "l-land.firebaseapp.com",
+            projectId: "l-land",
+            storageBucket: "l-land.firebasestorage.app",
+            messagingSenderId: "529301799622",
+            appId: "1:529301799622:web:4025f097bd7bddd4704dc7",
+            measurementId: "G-W4MKK0HCH0"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const analytics = getAnalytics(app);
+        const db = getFirestore(app);
+
+        window.submitGuestbook = async function() {
+            const nameInput = document.getElementById('gb-name');
+            const pwdInput = document.getElementById('gb-password'); 
+            const msgInput = document.getElementById('gb-message');
+            const factionRadios = document.getElementsByName('gb-faction');
+            
+            const name = nameInput.value.trim();
+            const pwd = pwdInput.value.trim();
+            const msg = msgInput.value.trim();
+            
+            if (!name || !pwd || !msg) {
+                alert('식별자(ID), 비밀번호(PIN), 메시지를 모두 입력해야 통신을 전송할 수 있습니다.');
+                return;
+            }
+
+            let faction = 'half';
+            let factionLabel = '하프';
+            for (const radio of factionRadios) {
+                if (radio.checked) {
+                    faction = radio.value;
+                    if(faction === 'half') factionLabel = '하프 소속';
+                    if(faction === 'human') factionLabel = '인간 소속';
+                    if(faction === 'zombie') factionLabel = '좀비 소속';
+                    break;
+                }
+            }
+
+            const now = new Date();
+            const pad = (num) => num.toString().padStart(2, '0');
+            const timeStr = `[2067.${pad(now.getMonth()+1)}.${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}]`;
+            
+            const safeMsg = msg.replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, '<br>');
+
+            try {
+                await addDoc(collection(db, "guestbook"), {
+                    name: name.replace(/</g, "&lt;"),
+                    password: pwd, 
+                    faction: faction,
+                    factionLabel: factionLabel,
+                    timeStr: timeStr,
+                    safeMsg: safeMsg,
+                    timestamp: serverTimestamp() 
+                });
+                
+                nameInput.value = '';
+                pwdInput.value = ''; 
+                msgInput.value = '';
+            } catch (e) {
+                console.error("통신 전송 오류: ", e);
+                alert("통신 로그를 기록하는 데 실패했습니다. 파이어베이스 권한(Rules) 설정을 확인해주세요.");
+            }
+        };
+
+        window.deleteGuestbookEntry = async function(dbId) {
+            const pwd = prompt("로그를 삭제하려면 비밀번호(PIN)를 입력하십시오.");
+            if (!pwd) return;
+
+            try {
+                const docRef = doc(db, "guestbook", dbId);
+                const docSnap = await getDoc(docRef);
+                
+                if (docSnap.exists()) {
+                    if (docSnap.data().password === pwd) {
+                        await deleteDoc(docRef);
+                        alert("통신 로그가 시스템에서 영구 삭제되었습니다.");
+                    } else {
+                        alert("비밀번호(PIN)가 일치하지 않습니다. 삭제 거부됨.");
+                    }
+                } else {
+                    alert("이미 삭제되었거나 존재하지 않는 로그입니다.");
+                }
+            } catch (e) {
+                console.error("삭제 오류: ", e);
+                alert("삭제 진행 중 시스템 오류가 발생했습니다.");
+            }
+        };
+
+        const q = query(collection(db, "guestbook"), orderBy("timestamp", "desc"));
+        onSnapshot(q, (snapshot) => {
+            const guestbookData = [];
+            snapshot.forEach((docSnap) => {
+                guestbookData.push({ dbId: docSnap.id, ...docSnap.data() });
+            });
+            renderGuestbook(guestbookData);
+        });
+
+        function renderGuestbook(dataArray) {
+            const gbContainer = document.getElementById('guestbook-entries');
+            const homeContainer = document.getElementById('home-guestbook-entries');
+            
+            gbContainer.innerHTML = '';
+            if (homeContainer) homeContainer.innerHTML = '';
+            
+            if(dataArray.length === 0) {
+                const emptyMsg = '<p style="color:#666; font-style:italic; padding-left:10px;">수신된 통신 로그가 없습니다. 첫 로그를 남겨주세요.</p>';
+                gbContainer.innerHTML = emptyMsg;
+                if (homeContainer) homeContainer.innerHTML = emptyMsg;
+                return;
+            }
+
+            dataArray.forEach(entry => {
+                const htmlStr = `
+                    <div class="gb-entry-header">
+                        <span>ID: <strong>${entry.name}</strong> [${entry.factionLabel}]</span>
+                        <div>
+                            <span style="margin-right:10px;">${entry.timeStr}</span>
+                            <button class="gb-delete-btn" onclick="deleteGuestbookEntry('${entry.dbId}')">삭제</button>
+                        </div>
+                    </div>
+                    <div class="gb-entry-msg">${entry.safeMsg}</div>
+                `;
+
+                const div1 = document.createElement('div');
+                div1.className = `gb-entry ${entry.faction}`;
+                div1.innerHTML = htmlStr;
+                gbContainer.appendChild(div1);
+
+                if (homeContainer) {
+                    const div2 = document.createElement('div');
+                    div2.className = `gb-entry ${entry.faction}`;
+                    div2.innerHTML = htmlStr;
+                    homeContainer.appendChild(div2);
+                }
+            });
+        }
+    </script>
+</body>
+</html>
